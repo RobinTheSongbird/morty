@@ -290,7 +290,7 @@ class Spectrum:
     @staticmethod
     def deconvolute_1d(spc, functions, minimizer=None, args=None):
         """
-        Deconvolutes a spectrum with arbitrary functions.
+        Deconvolutes a spectrum with arbitrary functions. RTD TEST
 
         Parameters
         ----------
