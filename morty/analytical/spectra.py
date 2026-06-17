@@ -40,7 +40,7 @@ class Ppm:
         plot(spectrum.axis_f2[Ppm(100, 10)], spectrum[Ppm(100, 10)])
 
     """
-    def __init__(self, high_ppm, low_ppm):
+    def __init__(self, high_ppm: float, low_ppm: float):
         """
         Instantiates the `Ppm` object.
 
@@ -56,7 +56,7 @@ class Ppm:
         self.low_ppm = low_ppm
         
     @classmethod
-    def from_list(cls, values): 
+    def from_list(cls, values: list) -> list['Ppm']: 
         """
         Create a list of Ppm objects from a flat list of boundaries.
 
@@ -165,7 +165,7 @@ class Spectrum:
         - ``spectrum[Ppm(14:18)]`` yields the spectrum from 14 ppm to 18 ppm.
 
     """
-    def __init__(self, folder, procno, generic_f1):
+    def __init__(self, folder: str, procno: int, generic_f1: bool):
         """
         Loads a TOPSPIN folder.
 
@@ -288,20 +288,23 @@ class Spectrum:
                 int(self.proc_pars_f2['NC_proc'])
 
     @staticmethod
-    def deconvolute_1d(spc, functions, minimizer=None, args=None):
+    def deconvolute_1d(spc: np.ndarray, functions: list[dict], 
+                       minimizer: str = None, args=None) -> tuple[list[dict[str, float]], 
+                                                                  list[dict[str, float]], 
+                                                                  lmfit.minimizer.MinimizerResult]:
         """
-        Deconvolutes a spectrum with arbitrary functions. RTD TEST
+        Deconvolutes a spectrum with arbitrary functions.
 
         Parameters
         ----------
         spc : array
             The intensity values of the spectrum. Since this is a static
             method, you can use this on any data.
-        functions : array of dict
+        functions : list of dict
             Each dictionary has the following keys:
 
                 - function : callable
-                - params : array of tuples
+                - params : list of tuples
                     Tuples with starting values and boundaries as required by
                     lmfit have to be supplied: ::
 
@@ -544,13 +547,13 @@ class Spectrum:
         #print(opt.success)
         
         # Extract results and uncertainties
-        results, uncert = [None] * len(functions), [None] * len(functions)
+        results: list[dict[str, float]] = []
+        uncert: list[dict[str, float]] = []
         for i, func in enumerate(functions):
             param_names = [name for name in inspect.signature(func['function']).parameters
                        if f's{i}{name}' in opt.params]
-            results[i] = {name: opt.params[f's{i}{name}'].value for name in param_names}
-            uncert[i] = {name: opt.params[f's{i}{name}'].stderr for name in param_names}
-            
+            results.append({name: opt.params[f's{i}{name}'].value for name in param_names})
+            uncert.append({name: opt.params[f's{i}{name}'].stderr for name in param_names})
         return results, uncert, opt
 
 
@@ -652,8 +655,8 @@ class Spectrum1D(Spectrum):
 
     """
 
-    def __init__(self, folder=None, procno=1, spc=None, proc_pars_f2=None,
-                 spc_c=None, acqu_pars=None, axis_f2=None):
+    def __init__(self, folder:str=None, procno: int=1, spc: np.ndarray=None, proc_pars_f2: dict=None,
+                 spc_c: np.ndarray=None, acqu_pars: dict=None, axis_f2: 'SpectrumAxis'=None):
         """
         Instantiates a 1D Spectrum.
 
@@ -727,7 +730,7 @@ class Spectrum1D(Spectrum):
     def __len__(self):
         return len(self.spc)
 
-    def baseline(self, f2range=((0, None),), deg=2):
+    def baseline(self, f2range: list[tuple[float, float]] | list['Ppm'] = ((0, None),), deg: int = 2):
         """
         Baseline correction for the spectrum.
 
@@ -737,7 +740,7 @@ class Spectrum1D(Spectrum):
 
         Parameters
         ----------
-        f2range : tuple of tuples or :class:`morty.analytical.Ppm`
+        f2range : list of tuples or :class:`morty.analytical.Ppm`
             List of upper/lower bounds for the areas used to fit the baseline.
             None as value for the second value of the tuple equals to the
             maximum value.
@@ -776,7 +779,7 @@ class Spectrum1D(Spectrum):
         #Substract the baseline from the spectrum
         self.spc_c = self.spc - self.base
 
-    def baseline_subtract_measurement(self, spectrum_bg, scaling=1):
+    def baseline_subtract_measurement(self, spectrum_bg: 'Spectrum1D', scaling: float = 1):
         """
         Subtracts a background measurement from the current spectrum.
 
@@ -803,7 +806,7 @@ class Spectrum1D(Spectrum):
         """
         self.spc_c = self.spc - spectrum_bg.spc * scaling
 
-    def integrate_by_sum(self, int_range=None):
+    def integrate_by_sum(self, int_range: slice | 'Ppm' = None) -> float:
         """
         Integrate spectrum in a certain range by summing it up.
 
@@ -830,7 +833,10 @@ class Spectrum1D(Spectrum):
         return np.sum(self[int_range], axis=0)
 
     @staticmethod
-    def integrate_deconvoluted(spc, axis, signals, minimizer=None):
+    def integrate_deconvoluted(spc: np.ndarray, axis: np.ndarray | SpectrumAxis, 
+                               signals: list, minimizer: str = None) -> tuple[tuple[float], 
+                                                                              list[float | None], 
+                                                                              lmfit.Minimizer]:
         """
         Deconvolutes and integrates a pseudo 1D spectrum using a sum of Pseudo
         Voigt profiles.
@@ -924,7 +930,7 @@ class Spectrum1D(Spectrum):
                                            opt[0][i]['eta'])
                       for i in range(len(opt[0])))
         # calculate uncertainties
-        uncert = [None] * len(opt[0])
+        uncert: list[float | None] = []
         for i in range(len(opt[0])):
             # sqrt(pi/ln(2)) = 2.1289340388624525
             if (opt[1][i]['sigma'] is not None and
@@ -943,10 +949,10 @@ class Spectrum1D(Spectrum):
                 d_eta = ((opt[0][i]['intensity'] * opt[0][i]['gamma'] / 2 *
                           2.1289340388624525 - opt[0][i]['intensity'] *
                           opt[0][i]['gamma'] * np.pi / 2) * opt[1][i]['eta']) ** 2
-                uncert[i] = math.sqrt(d_sigma + d_gamma + d_int + d_eta)
+                uncert.append(math.sqrt(d_sigma + d_gamma + d_int + d_eta))
             else:
-                uncert[i] = None
-        return [integ, uncert, opt]
+                uncert.append(None)
+        return integ, uncert, opt
 
 
 class Spectrum2D(Spectrum):
@@ -998,8 +1004,9 @@ class Spectrum2D(Spectrum):
 
     """
 
-    def __init__(self, folder=None, procno=1, spc=None, proc_pars_f2=None,
-                 proc_pars_f1=None, spc_c=None, acqu_pars=None):
+    def __init__(self, folder: str = None, procno: int = 1, spc: np.ndarray = None, 
+                 proc_pars_f2: dict = None, proc_pars_f1: dict = None, spc_c: np.ndarray = None, 
+                 acqu_pars: dict = None):
         """
         Set up an instance of a 2D Spectrum.
 
@@ -1084,7 +1091,8 @@ class Spectrum2D(Spectrum):
                 else self.spc_c[index_f2, index_f1])
 
 
-    def integrate(self, limit1, limit2):
+    def integrate(self, limit1: tuple[float, float], limit2: tuple[float, float]) -> float:
+        #TODO: This for some reason doesnt take Ppm Objects
         """
         Integrate an area of the spectrum.
 
@@ -1113,7 +1121,8 @@ class Spectrum2D(Spectrum):
                 summed_spec += np.sum(self.spc[row, limit1[0]:limit1[1]])
         return summed_spec
 
-    def baseline(self, f2range=((0, None),), f1range=None, deg=2):
+    def baseline(self, f2range: list[tuple[float, float]] | list['Ppm'] = ((0, None),), 
+                 f1range: list[tuple[float, float]] | list['Ppm'] = None, deg: int = 2):
         """
         Baseline correction for the spectrum.
 
@@ -1123,16 +1132,15 @@ class Spectrum2D(Spectrum):
 
         Parameters
         ----------
-        f2range : tuple
+        f2range : list of tuples or morty.analytical.Ppm
             List of tuples with upper/lower bounds in the F2 dimension for the
             areas used to fit the baseline. None as value for the second value
-            of the tuple equals to the maximum value. Values are given in ppm
-        f1range : tuple
+            of the tuple equals to the maximum value.
+        f1range : list of tuples or morty.analytical.Ppm
             List of tuples upper/lower bounds in the F1 dimension for the areas
             used to fit the baseline. None as value for the second value of the
             tuple equals to the maximum value. None as value for the parameter
-            itself skips the baselinecorrection in the F1 dimension. Values
-            are given in ppm.
+            itself skips the baseline correction in the F1 dimension.
         deg : int
             Degree of the polynom used to fit the baseline.
 
@@ -1178,7 +1186,7 @@ class Spectrum2D(Spectrum):
 
             self.spc_c = self.spc - self.base
 
-    def symmetric_spectrum(self):
+    def symmetric_spectrum(self) -> 'Spectrum2D':
         """
         Returns a symmetrized spectrum.
 
@@ -1223,7 +1231,7 @@ class SpectrumPseudo2D(Spectrum):
     vd_list : list
         If the object is initialized with `load_vd` = True, the vd (delay length)
         list will be saved to this variable.
-    vc_list : listt
+    vc_list : list
         If the object is initialized with `load_vc` = True, the vc (counter)
         list will be saved to this variable.
     base : np.ndarray
@@ -1237,8 +1245,9 @@ class SpectrumPseudo2D(Spectrum):
       return instances (or a list) of `Spectrum1D`.
 
     """
-    def __init__(self, folder, procno=1, load_vd=False, load_vp=False,
-                 load_vc=False, num_experiments=None, everynth=(0, 1)):
+    def __init__(self, folder: str, procno: int = 1, load_vd: bool = False, load_vp: bool = False,
+                 load_vc: bool = False, num_experiments: int | None = None, 
+                 everynth: tuple[int, int] = (0, 1)):
         """
         Set up an instance of a Pseudo2D Spectrum.
 
@@ -1314,7 +1323,7 @@ class SpectrumPseudo2D(Spectrum):
     def __len__(self):
         return len(self.spc.T)
 
-    def baseline(self, f2range=((0, None),), deg=2):
+    def baseline(self, f2range: list[list] | list['Ppm'] = ((0, None),), deg: int = 2):
         """
         Baseline correction for each of the spectra.
 
@@ -1353,7 +1362,7 @@ class SpectrumPseudo2D(Spectrum):
 
         self.spc_c = self.spc - self.base
 
-    def baseline_subtract_measurement(self, spectrum_bg, scaling=1):
+    def baseline_subtract_measurement(self, spectrum_bg: 'SpectrumPseudo2D', scaling: float = 1):
         """
         Subtracts a background measurement from the current spectrum.
 
@@ -1380,9 +1389,12 @@ class SpectrumPseudo2D(Spectrum):
         """
         self.spc_c = self.spc - spectrum_bg.spc * scaling
 
-    def integrate_deconvoluted(self, signals, spc_slice=None, start_spc=0,
-                               minimizer=None):
-        
+    def integrate_deconvoluted(self, signals: tuple[tuple], spc_slice: slice | 'Ppm' | None = None, 
+                               start_spc: int = 0,minimizer: str | None = None) -> tuple[list[float | None], 
+                                                                                        list[float | None], 
+                                                                                        float,
+                                                                                        tuple[tuple[float], list[float | None], lmfit.Minimizer]]:
+
         """
         Deconvolutes and integrates a pseudo 2D spectrum.
 
@@ -1431,7 +1443,7 @@ class SpectrumPseudo2D(Spectrum):
         scaling : float
             Scaling factor used to normalize the spectra. Multiply it with the
             integrals (and uncertanties) to obtain non normalized values.
-        minimizer : tuple
+        results : tuple
             The return values of each call of
             :class:`morty.analytical.Spectrum1D.integrate_deconvoluted()`.
 
@@ -1504,7 +1516,7 @@ class SpectrumPseudo2D(Spectrum):
             opts[spcnr] = opt[2][0]
         return intensities, uncertainties, scaling, opts
 
-    def integrate_by_sum(self, int_range=None):
+    def integrate_by_sum(self, int_range: slice | None = None):
         """
         Integrate each spectrum in a certain range by summing it up.
 
