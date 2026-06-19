@@ -40,20 +40,27 @@ class Ppm:
         plot(spectrum.axis_f2[Ppm(100, 10)], spectrum[Ppm(100, 10)])
 
     """
-    def __init__(self, high_ppm: float, low_ppm: float):
+    def __init__(self, high_ppm: float | None = None, low_ppm: float | None = None):
         """
         Instantiates the `Ppm` object.
 
         Parameters
         ----------
-        high_ppm : float
-            The higher ppm value.
-        low_ppm : float
-            The lower ppm value.
+        high_ppm : float | None
+            The higher ppm value. Leave empty to use upper end
+            of the axis as upper bound.
+        low_ppm : float | None
+            The lower ppm value. Leave empty to use lower end
+            of the axis as lower bound.
 
         """
-        self.high_ppm = high_ppm
-        self.low_ppm = low_ppm
+        #contingency for user errors        
+        if high_ppm is not None and low_ppm is not None and high_ppm < low_ppm:
+            self.low_ppm = high_ppm
+            self.high_ppm = low_ppm
+        else:
+            self.high_ppm = high_ppm
+            self.low_ppm = low_ppm
         
     @classmethod
     def from_list(cls, values: list) -> list['Ppm']: 
@@ -84,6 +91,11 @@ class Ppm:
             If the length of the input list is not divisible by 2.
 
         """
+        #If in the shape of [[high1, low1], [high2, low2]], flatten first
+        try:
+            if len(values[0]) == 2: values = np.array(values).flatten()
+        except AttributeError:
+            pass
         if len(values) % 2 != 0:
             raise ValueError("Ppm classes from list: Length must be divisible by 2.")
         return [cls(values[i], values[i+1]) for i in range(0, len(values), 2)]
@@ -220,9 +232,15 @@ class Spectrum:
 
         # little/big endian
         if self.proc_pars_f2['BYTORDP'] == '0':
-            readdtype = '<i4'
+            readdtype = '<'
         else:
-            readdtype = '>i4'
+            readdtype = '>'
+        
+        #binary data type (for topspin 4+)
+        if self.proc_pars_f2['DTYPP'] == 'float':
+            readdtype += 'f8'
+        else:
+            readdtype += 'i4'
 
         # F2 axis
         # Note the endpoint=False.
@@ -256,26 +274,32 @@ class Spectrum:
                                           int(self.proc_pars_f2['XDIM']))):
                         # load a XDIM(F2) x XDIM(F1) block from our open file
                         # buffer
-                        self.spc[j * int(self.proc_pars_f2['XDIM']):
-                                 ((j + 1) * int(self.proc_pars_f2['XDIM'])),
-                                 i * int(self.proc_pars_f1['XDIM']):(i + 1) *
-                                 int(self.proc_pars_f1['XDIM'])] = (
-                                     np.frombuffer(
-                                         data_file.read(4 * block_size),
-                                         count=block_size,
-                                         dtype=readdtype
-                                         ).astype(np.int64) * 2 **
-                                     int(self.proc_pars_f1['NC_proc']
-                                        )).reshape(
+                        slice_f2 = slice(j * int(self.proc_pars_f2['XDIM']),
+                                        ((j + 1) * int(self.proc_pars_f2['XDIM'])))
+                        slice_f1 = slice(i * int(self.proc_pars_f1['XDIM']),
+                                         (i + 1) *int(self.proc_pars_f1['XDIM']))
+                        
+                        self.spc[slice_f2, slice_f1] = (
+                                    np.frombuffer(
+                                        data_file.read(4 * block_size),
+                                        count=block_size,
+                                        dtype=readdtype
+                                        ).astype(np.float64)).reshape(
                                             (int(self.proc_pars_f1['XDIM']),
-                                             int(self.proc_pars_f2['XDIM']))).T
+                                            int(self.proc_pars_f2['XDIM']))).T
+                                    
+            if self.self.proc_pars_f2['DTYPP'] != 'float':
+                self.spc *= 2** int(self.proc_pars_f1['NC_proc'])
+                
+
+                            
 
             if (self.proc_pars_f1['OFFSET'] != '0') and (generic_f1 is False):
                 self.axis_f1 = SpectrumAxis(np.linspace(
                     float(self.proc_pars_f1['OFFSET']),
-                    float(self.proc_pars_f1['OFFSET']) -
-                    float(self.proc_pars_f1['SW_p']) /
-                    float(self.proc_pars_f1['SF']),
+                    float(self.proc_pars_f1['OFFSET']) 
+                    - float(self.proc_pars_f1['SW_p']) 
+                    / float(self.proc_pars_f1['SF']),
                     np.uint(self.proc_pars_f1['SI']), endpoint=False))
             else:
                 self.axis_f1 = SpectrumAxis(
